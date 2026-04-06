@@ -2,17 +2,22 @@ import { migrate } from "./src/db/schema";
 import { enqueue } from "./src/queue";
 import { start } from "./src/queue/worker";
 import "./src/processor/handler";
+import { Effect } from "effect";
 
-async function main() {
-  await migrate();
+const program = Effect.gen(function* () {
+  yield* migrate();
 
-  const id = await enqueue("image", {
-    imagePath: "C:/Users/FEMI/Downloads/phone.jpg",
+  const id = yield* enqueue("image", {
+    imagePath: "C:/Users/FEMI/Downloads/car.jpg",
   });
-  console.log("Enqueued job:", id);
 
-  // start the worker
-  start("image");
-}
+  yield* Effect.sync(() => {
+    console.log("Enqueued job:", id);
+  });
 
-main();
+  yield* Effect.sync(() => {
+    start("image");
+  });
+});
+
+Effect.runPromise(program);

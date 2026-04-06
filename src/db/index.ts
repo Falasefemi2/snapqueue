@@ -1,4 +1,6 @@
+import { Effect } from "effect";
 import { Pool } from "pg";
+import { DatabaseError } from "../error";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -6,10 +8,14 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000,
 });
 
-export async function executeSql(text: string, values?: unknown[]) {
-  return await pool.query(text, values);
-}
+export const executeSql = (text: string, values?: unknown[]) =>
+  Effect.tryPromise({
+    try: () => pool.query(text, values),
+    catch: (cause) => new DatabaseError({ cause }),
+  });
 
-export async function close() {
-  return await pool.end();
-}
+export const closeDb = () =>
+  Effect.tryPromise({
+    try: () => pool.end(),
+    catch: (cause) => new DatabaseError({ cause }),
+  });

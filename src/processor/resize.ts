@@ -1,9 +1,20 @@
+import { Effect } from "effect";
 import sharp from "sharp";
+import { ImageError } from "../error";
 
-export async function resize(imagePath: string) {
-  const thumbnail = await sharp(imagePath).resize(100, 100).toBuffer();
-  const medium = await sharp(imagePath).resize(500, 500).toBuffer();
-  const large = await sharp(imagePath).resize(1200, 1200).toBuffer();
+const resizeBuffer = (imagePath: string, width: number, height: number) =>
+  Effect.tryPromise({
+    try: () => sharp(imagePath).resize(width, height).toBuffer(),
+    catch: (cause) => new ImageError({ cause }),
+  });
 
-  return { thumbnail, medium, large };
-}
+export const resize = (imagePath: string) =>
+  Effect.gen(function* () {
+    const [thumbnail, medium, large] = yield* Effect.all([
+      resizeBuffer(imagePath, 100, 100),
+      resizeBuffer(imagePath, 500, 500),
+      resizeBuffer(imagePath, 1200, 1200),
+    ]);
+
+    return { thumbnail, medium, large };
+  });

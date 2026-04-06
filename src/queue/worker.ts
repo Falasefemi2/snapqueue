@@ -1,6 +1,7 @@
+import { Effect } from "effect";
 import { complete, fail, fetch } from ".";
 
-type JobHandler = (payload: unknown) => Promise<void>;
+type JobHandler = (payload: unknown) => Effect.Effect<unknown, unknown, void>;
 
 const handlers: Record<string, JobHandler> = {};
 
@@ -8,33 +9,41 @@ export function register(queue: string, handler: JobHandler) {
   handlers[queue] = handler;
 }
 
-export async function processQueue(queue: string) {
-  const jobs = await fetch(queue);
+export const processQueue = (queue: string) =>
+  Effect.gen(function* () {
+    const jobs = yield* fetch(queue);
 
-  for (const job of jobs) {
-    const handler = handlers[job.queue];
-    if (!handler) {
-      await fail(job.id, `no handler registered for queue ${job.queue}`);
-      continue;
-    }
+    for (const job of jobs) {
+      const handler = handlers[job.queue];
+      if (!handler) {
+        yield* fail(job.id, `no handler registered for queue ${job.queue}`);
+        continue;
+      }
 
-    try {
-      await handler(job.payload);
-      await complete(job.id);
-      console.log("job completed");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      await fail(job.id, msg);
-      console.log(`✗ Job ${job.id} failed: ${msg}`);
+      const result = yield* Effect.either(handler(job.payload));
+
+      if (result._tag === "Left") {
+        const error = result.left;
+        const msg = error instanceof Error ? error.message : String(error);
+        yield* fail(job.id, msg);
+        console.log(`✗ Job ${job.id} failed: ${msg}`);
+      } else {
+        yield* complete(job.id);
+        console.log("job completed");
+      }
     }
-  }
-}
+    return;
+  });
 
 export async function start(queue: string, intervalMs = 2000) {
   console.log(`Worker started on queue: ${queue}`);
 
   const loop = async () => {
-    await processQueue(queue);
+    try {
+      await (Effect.runPromise as any)(processQueue(queue));
+    } catch (error) {
+      console.error("processQueue error", error);
+    }
     setTimeout(loop, intervalMs);
   };
 
